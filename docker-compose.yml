@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  aggregator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - aggregator-data:/data
+    container_name: uts-aggregator-service
+    restart: unless-stopped
+
+  publisher:
+    build:
+      context: ./publisher
+      dockerfile: Dockerfile
+    container_name: uts-publisher-client
+    # 'depends_on' hanya menunggu container 'aggregator' start, 
+    # bukan menunggu API-nya siap. Kita tangani retry di script.
+    depends_on:
+      - aggregator
+    # Jalankan script publisher setelah build
+    command: ["python", "publish.py"]
+
+volumes:
+  aggregator-data:
+    driver: local
