@@ -53,7 +53,7 @@ Sistem ini dievaluasi berdasarkan metrik-metrik berikut:
 
 ## 4. Teori
 
-1. T1 (Bab 1): Karakteristik Sistem Terdistribusi dan Trade-off
+### 1. T1 (Bab 1): Karakteristik Sistem Terdistribusi dan Trade-off
 Karakteristik utama sistem terdistribusi adalah kumpulan komputer independen yang tampak bagi penggunanya sebagai satu sistem koheren tunggal (Tanenbaum & Van Steen, 2023, Bab 1). Karakteristik kunci meliputi: (1) Concurrency: Komponen berjalan secara paralel; (2) No Global Clock: Setiap node memiliki clock sendiri; (3) Independent Failures: Kegagalan satu node tidak serta-merta menghentikan sistem; dan (4) Transparency: Menyembunyikan kompleksitas distribusi dari pengguna (misalnya access, location, failure transparency).
 
 Pada desain log aggregator Pub-Sub ini, trade-off utamanya adalah antara Throughput/Scalability dan Consistency/Ordering.
@@ -61,7 +61,7 @@ Pada desain log aggregator Pub-Sub ini, trade-off utamanya adalah antara Through
 - Ini mengorbankan strong consistency; ada jeda (latensi) sebelum event muncul di `GET /events`. Sistem ini mengadopsi eventual consistency (Tanenbaum & Van Steen, 2023, Bab 7).
 - Kita juga mengorbankan total ordering demi performa. Log dari source berbeda tidak dijamin diproses sesuai urutan timestamp global.
 
-2. T2 (Bab 2): Arsitektur Client-Server vs. Publish-Subscribe
+### 2. T2 (Bab 2): Arsitektur Client-Server vs. Publish-Subscribe
 Arsitektur Client-Server tradisional (Tanenbaum & Van Steen, 2023, Bab 2) melibatkan komunikasi sinkron dan tight coupling. Client (sumber log) membuat permintaan langsung ke Server (aggregator) dan seringkali menunggu respons.
 
 Sebaliknya, arsitektur Publish-Subscribe (Pub-Sub) bersifat asynchronous dan loosely coupled. Publisher (sumber log) mengirimkan event ke topic tertentu tanpa mengetahui siapa subscriber (aggregator)-nya. Ini memberikan beberapa keunggulan teknis untuk log aggregator:
@@ -71,7 +71,7 @@ Sebaliknya, arsitektur Publish-Subscribe (Pub-Sub) bersifat asynchronous dan loo
 
     3. Resilience: Dalam implementasi kami, decoupling ini terjadi antara API dan consumer internal melalui `asyncio.Queue`, sehingga API tetap responsif meskipun consumer sedang sibuk.
 
-3. T3 (Bab 3): At-Least-Once vs. Exactly-Once dan Idempotency
+### 3. T3 (Bab 3): At-Least-Once vs. Exactly-Once dan Idempotency
 Delivery semantics (semantik pengiriman) mendefinisikan jaminan berapa kali sebuah pesan dapat dikirimkan.
     1. At-Least-Once (Paling Tidak Sekali): Sistem menjamin bahwa pesan akan dikirimkan, tetapi bisa saja terkirim lebih dari sekali. Ini biasanya dicapai melalui retries (pengiriman ulang) oleh publisher jika tidak ada konfirmasi penerimaan (Tanenbaum & Van Steen, 2023, Bab 6).
 
@@ -79,14 +79,14 @@ Delivery semantics (semantik pengiriman) mendefinisikan jaminan berapa kali sebu
 
 Dalam skenario at-least-once (karena adanya retries), consumer (aggregator) mungkin menerima event yang sama berkali-kali. Idempotent Consumer menjadi krusial karena idempotency memastikan bahwa memproses event yang sama berulang kali memiliki efek yang sama persis dengan memprosesnya satu kali. Dalam aggregator kami, operasi "simpan ke DB" bersifat idempotent berkat primary key (`event_id, topic`). Jika event duplikat tiba, `INSERT` akan gagal, dan status sistem tetap konsisten.
 
-4. T4 (Bab 4): Skema Penamaan Topic dan Event ID
+### 4. T4 (Bab 4): Skema Penamaan Topic dan Event ID
 Skema penamaan (Tanenbaum & Van Steen, 2023, Bab 4) sangat penting untuk routing (via topic) dan deduplication (via event_id).
     1. Topic: Skema penamaan hierarkis berbasis string disarankan, mirip dengan path URL. Format: `environment.application.module.level.` Contoh: `production.api-gateway.auth-service.error.` Ini memungkinkan filtering yang fleksibel.
     2. Event ID (Unik & Collision-Resistant): Kunci dari deduplication adalah event_id yang unik secara global yang dibuat oleh publisher (sumber log).
         - Pilihan Terbaik: UUIDv4 (Universally Unique Identifier). Peluang collision (tabrakan) sangat rendah dan dapat dibuat secara independen oleh publisher mana pun tanpa koordinasi.
         - Dampak pada Dedup: Skema ini memindahkan tanggung jawab keunikan ke publisher. Aggregator hanya perlu menyimpan set (`topic, event_id`) yang terlihat.
 
-5. T5 (Bab 5): Ordering dan Pendekatan Praktis
+### 5. T5 (Bab 5): Ordering dan Pendekatan Praktis
 Total Ordering (urutan total), di mana setiap komponen dalam sistem melihat setiap event dalam urutan global yang sama persis (Tanenbaum & Van Steen, 2023, Bab 5), tidak diperlukan untuk kasus penggunaan log aggregator ini. Mencapai total ordering sangat mahal dan akan menjadi bottleneck performa.
 
 Kami tidak peduli jika log dari source-A diproses sebelum log dari source-B meskipun timestamp source-B lebih awal. Kami hanya peduli bahwa:
@@ -95,7 +95,7 @@ Kami tidak peduli jika log dari source-A diproses sebelum log dari source-B mesk
 
 Pendekatan praktis yang digunakan adalah tidak ada jaminan ordering antar-publisher. Kita hanya mengandalkan event timestamp yang disediakan oleh publisher untuk informasi kapan event itu terjadi, bukan untuk mengurutkan pemrosesan. Event diproses roughly dalam urutan kedatangan di antrian.
 
-6. T6 (Bab 6): Failure Modes dan Mitigasi
+### 6. T6 (Bab 6): Failure Modes dan Mitigasi
 Dalam sistem Pub-Sub ini, beberapa mode kegagalan (Tanenbaum & Van Steen, 2023, Bab 6) dapat terjadi:
     1. Publisher Crash/Retry: Publisher mengirim event, tidak mendapat konfirmasi, lalu mengirim ulang. Ini menciptakan duplikasi event.
         - Mitigasi: Idempotent consumer dan deduplication store (SQLite) kami menangani ini dengan aman.
@@ -104,7 +104,7 @@ Dalam sistem Pub-Sub ini, beberapa mode kegagalan (Tanenbaum & Van Steen, 2023, 
     3. Aggregator (Consumer) Crash (setelah simpan DB, sebelum ack queue): Dalam sistem yang lebih canggih, broker akan mengirim ulang event tersebut.
         - Mitigasi: Durable deduplication store (SQLite) kami akan menangkap duplikat ini saat consumer memprosesnya lagi.
 
-7. T7 (Bab 7): Eventual Consistency dan Peran Idempotency/Dedup
+### 7. T7 (Bab 7): Eventual Consistency dan Peran Idempotency/Dedup
 Eventual Consistency (Konsistensi Akhirnya) (Tanenbaum & Van Steen, 2023, Bab 7) adalah model konsistensi yang menjamin bahwa jika tidak ada pembaruan baru yang dilakukan, database akan akhirnya menyatu ke nilai yang sama.
 
 Dalam aggregator kami, ini berarti ada jeda waktu (latensi) antara event diterima oleh `POST /publish` dan event tersebut muncul di `GET /events` (karena antrian async). Sistem mungkin sementara dalam keadaan tidak konsisten, namun dijamin bahwa akhirnya semua event unik akan diproses dan disimpan.
@@ -113,7 +113,7 @@ Peran Idempotency + Deduplication: Keduanya adalah mekanisme kunci untuk mencapa
     - Deduplication (menggunakan database persisten) bertindak sebagai "penjaga gerbang" ke state akhir.
     - Idempotency adalah prinsip desain yang memungkinkan consumer untuk secara aman memproses ulang event tanpa merusak state tersebut.
 
-8. T8 (Bab 1–7): Metrik Evaluasi Sistem dan Keputusan Desain
+### 8. T8 (Bab 1–7): Metrik Evaluasi Sistem dan Keputusan Desain
 Metrik evaluasi kunci untuk sistem aggregator ini adalah:
     1. Throughput (Penerimaan): Berapa banyak event per detik yang dapat ditangani oleh endpoint `POST /publish`.
         - Keputusan Desain: Menggunakan FastAPI (async) dan memindahkan pemrosesan ke background task (via `asyncio.Queue`) memaksimalkan throughput penerimaan.
@@ -133,3 +133,16 @@ Pastikan Docker sudah terinstal dan berjalan.
 
 ```bash
 docker build -t uts-aggregator .
+```
+
+### 2. Buat Volume
+
+```bash
+docker volume create aggregator-data
+```
+
+### 3. Jalankan Container
+
+```bash
+docker run -d --rm -p 8080:8080 -v aggregator-data:/data --name my-aggregator uts-aggregator
+```
