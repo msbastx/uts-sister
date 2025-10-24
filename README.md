@@ -65,44 +65,44 @@ Pada desain log aggregator Pub-Sub ini, trade-off utamanya adalah antara Through
 Arsitektur Client-Server tradisional (Tanenbaum & Van Steen, 2023, Bab 2) melibatkan komunikasi sinkron dan tight coupling. Client (sumber log) membuat permintaan langsung ke Server (aggregator) dan seringkali menunggu respons.
 
 Sebaliknya, arsitektur Publish-Subscribe (Pub-Sub) bersifat asynchronous dan loosely coupled. Publisher (sumber log) mengirimkan event ke topic tertentu tanpa mengetahui siapa subscriber (aggregator)-nya. Ini memberikan beberapa keunggulan teknis untuk log aggregator:
-    1. Scalability: Kita dapat menambahkan lebih banyak publisher atau consumer tanpa memodifikasi komponen lain.
+1. Scalability: Kita dapat menambahkan lebih banyak publisher atau consumer tanpa memodifikasi komponen lain.
 
-    2. Decoupling (Pemisahan): Publisher tidak perlu tahu lokasi aggregator (via topic). Publisher hanya perlu "membuang" log dan lanjut bekerja (fire-and-forget), yang krusial untuk aplikasi berkinerja tinggi.
+2. Decoupling (Pemisahan): Publisher tidak perlu tahu lokasi aggregator (via topic). Publisher hanya perlu "membuang" log dan lanjut bekerja (fire-and-forget), yang krusial untuk aplikasi berkinerja tinggi.
 
-    3. Resilience: Dalam implementasi kami, decoupling ini terjadi antara API dan consumer internal melalui `asyncio.Queue`, sehingga API tetap responsif meskipun consumer sedang sibuk.
+3. Resilience: Dalam implementasi kami, decoupling ini terjadi antara API dan consumer internal melalui `asyncio.Queue`, sehingga API tetap responsif meskipun consumer sedang sibuk.
 
 ### 3. T3 (Bab 3): At-Least-Once vs. Exactly-Once dan Idempotency
 Delivery semantics (semantik pengiriman) mendefinisikan jaminan berapa kali sebuah pesan dapat dikirimkan.
-    1. At-Least-Once (Paling Tidak Sekali): Sistem menjamin bahwa pesan akan dikirimkan, tetapi bisa saja terkirim lebih dari sekali. Ini biasanya dicapai melalui retries (pengiriman ulang) oleh publisher jika tidak ada konfirmasi penerimaan (Tanenbaum & Van Steen, 2023, Bab 6).
+1. At-Least-Once (Paling Tidak Sekali): Sistem menjamin bahwa pesan akan dikirimkan, tetapi bisa saja terkirim lebih dari sekali. Ini biasanya dicapai melalui retries (pengiriman ulang) oleh publisher jika tidak ada konfirmasi penerimaan (Tanenbaum & Van Steen, 2023, Bab 6).
 
-    2. Exactly-Once (Tepat Sekali): Jaminan ideal bahwa pesan dikirim dan diproses tepat satu kali. Ini sangat sulit dan mahal untuk dicapai dalam sistem terdistribusi (Tanenbaum & Van Steen, 2023, Bab 7).
+2. Exactly-Once (Tepat Sekali): Jaminan ideal bahwa pesan dikirim dan diproses tepat satu kali. Ini sangat sulit dan mahal untuk dicapai dalam sistem terdistribusi (Tanenbaum & Van Steen, 2023, Bab 7).
 
 Dalam skenario at-least-once (karena adanya retries), consumer (aggregator) mungkin menerima event yang sama berkali-kali. Idempotent Consumer menjadi krusial karena idempotency memastikan bahwa memproses event yang sama berulang kali memiliki efek yang sama persis dengan memprosesnya satu kali. Dalam aggregator kami, operasi "simpan ke DB" bersifat idempotent berkat primary key (`event_id, topic`). Jika event duplikat tiba, `INSERT` akan gagal, dan status sistem tetap konsisten.
 
 ### 4. T4 (Bab 4): Skema Penamaan Topic dan Event ID
 Skema penamaan (Tanenbaum & Van Steen, 2023, Bab 4) sangat penting untuk routing (via topic) dan deduplication (via event_id).
-    1. Topic: Skema penamaan hierarkis berbasis string disarankan, mirip dengan path URL. Format: `environment.application.module.level.` Contoh: `production.api-gateway.auth-service.error.` Ini memungkinkan filtering yang fleksibel.
-    2. Event ID (Unik & Collision-Resistant): Kunci dari deduplication adalah event_id yang unik secara global yang dibuat oleh publisher (sumber log).
-        - Pilihan Terbaik: UUIDv4 (Universally Unique Identifier). Peluang collision (tabrakan) sangat rendah dan dapat dibuat secara independen oleh publisher mana pun tanpa koordinasi.
-        - Dampak pada Dedup: Skema ini memindahkan tanggung jawab keunikan ke publisher. Aggregator hanya perlu menyimpan set (`topic, event_id`) yang terlihat.
+1. Topic: Skema penamaan hierarkis berbasis string disarankan, mirip dengan path URL. Format: `environment.application.module.level.` Contoh: `production.api-gateway.auth-service.error.` Ini memungkinkan filtering yang fleksibel.
+2. Event ID (Unik & Collision-Resistant): Kunci dari deduplication adalah event_id yang unik secara global yang dibuat oleh publisher (sumber log).
+    - Pilihan Terbaik: UUIDv4 (Universally Unique Identifier). Peluang collision (tabrakan) sangat rendah dan dapat dibuat secara independen oleh publisher mana pun tanpa koordinasi.
+    - Dampak pada Dedup: Skema ini memindahkan tanggung jawab keunikan ke publisher. Aggregator hanya perlu menyimpan set (`topic, event_id`) yang terlihat.
 
 ### 5. T5 (Bab 5): Ordering dan Pendekatan Praktis
 Total Ordering (urutan total), di mana setiap komponen dalam sistem melihat setiap event dalam urutan global yang sama persis (Tanenbaum & Van Steen, 2023, Bab 5), tidak diperlukan untuk kasus penggunaan log aggregator ini. Mencapai total ordering sangat mahal dan akan menjadi bottleneck performa.
 
 Kami tidak peduli jika log dari source-A diproses sebelum log dari source-B meskipun timestamp source-B lebih awal. Kami hanya peduli bahwa:
-    1. Semua event unik akhirnya diproses (eventual consistency).
-    2. Tidak ada duplikat.
+1. Semua event unik akhirnya diproses (eventual consistency).
+2. Tidak ada duplikat.
 
 Pendekatan praktis yang digunakan adalah tidak ada jaminan ordering antar-publisher. Kita hanya mengandalkan event timestamp yang disediakan oleh publisher untuk informasi kapan event itu terjadi, bukan untuk mengurutkan pemrosesan. Event diproses roughly dalam urutan kedatangan di antrian.
 
 ### 6. T6 (Bab 6): Failure Modes dan Mitigasi
 Dalam sistem Pub-Sub ini, beberapa mode kegagalan (Tanenbaum & Van Steen, 2023, Bab 6) dapat terjadi:
-    1. Publisher Crash/Retry: Publisher mengirim event, tidak mendapat konfirmasi, lalu mengirim ulang. Ini menciptakan duplikasi event.
-        - Mitigasi: Idempotent consumer dan deduplication store (SQLite) kami menangani ini dengan aman.
-    2. Aggregator (Consumer) Crash: Consumer mengambil event dari antrian in-memory (`asyncio.Queue`) tetapi crash sebelum menyimpannya ke SQLite.
-        - Mitigasi (Kelemahan Desain): Karena antrian bersifat in-memory, event ini akan hilang. Ini adalah trade-off untuk kesederhanaan (tidak menggunakan broker eksternal). Sistem ini menjamin at-most-once jika consumer crash.
-    3. Aggregator (Consumer) Crash (setelah simpan DB, sebelum ack queue): Dalam sistem yang lebih canggih, broker akan mengirim ulang event tersebut.
-        - Mitigasi: Durable deduplication store (SQLite) kami akan menangkap duplikat ini saat consumer memprosesnya lagi.
+1. Publisher Crash/Retry: Publisher mengirim event, tidak mendapat konfirmasi, lalu mengirim ulang. Ini menciptakan duplikasi event.
+    - Mitigasi: Idempotent consumer dan deduplication store (SQLite) kami menangani ini dengan aman.
+2. Aggregator (Consumer) Crash: Consumer mengambil event dari antrian in-memory (`asyncio.Queue`) tetapi crash sebelum menyimpannya ke SQLite.
+    - Mitigasi (Kelemahan Desain): Karena antrian bersifat in-memory, event ini akan hilang. Ini adalah trade-off untuk kesederhanaan (tidak menggunakan broker eksternal). Sistem ini menjamin at-most-once jika consumer crash.
+3. Aggregator (Consumer) Crash (setelah simpan DB, sebelum ack queue): Dalam sistem yang lebih canggih, broker akan mengirim ulang event tersebut.
+    - Mitigasi: Durable deduplication store (SQLite) kami akan menangkap duplikat ini saat consumer memprosesnya lagi.
 
 ### 7. T7 (Bab 7): Eventual Consistency dan Peran Idempotency/Dedup
 Eventual Consistency (Konsistensi Akhirnya) (Tanenbaum & Van Steen, 2023, Bab 7) adalah model konsistensi yang menjamin bahwa jika tidak ada pembaruan baru yang dilakukan, database akan akhirnya menyatu ke nilai yang sama.
@@ -110,17 +110,17 @@ Eventual Consistency (Konsistensi Akhirnya) (Tanenbaum & Van Steen, 2023, Bab 7)
 Dalam aggregator kami, ini berarti ada jeda waktu (latensi) antara event diterima oleh `POST /publish` dan event tersebut muncul di `GET /events` (karena antrian async). Sistem mungkin sementara dalam keadaan tidak konsisten, namun dijamin bahwa akhirnya semua event unik akan diproses dan disimpan.
 
 Peran Idempotency + Deduplication: Keduanya adalah mekanisme kunci untuk mencapai eventual consistency yang benar. Dalam sistem at-least-once yang penuh dengan retries, state bisa menjadi korup.
-    - Deduplication (menggunakan database persisten) bertindak sebagai "penjaga gerbang" ke state akhir.
-    - Idempotency adalah prinsip desain yang memungkinkan consumer untuk secara aman memproses ulang event tanpa merusak state tersebut.
+- Deduplication (menggunakan database persisten) bertindak sebagai "penjaga gerbang" ke state akhir.
+- Idempotency adalah prinsip desain yang memungkinkan consumer untuk secara aman memproses ulang event tanpa merusak state tersebut.
 
 ### 8. T8 (Bab 1–7): Metrik Evaluasi Sistem dan Keputusan Desain
 Metrik evaluasi kunci untuk sistem aggregator ini adalah:
-    1. Throughput (Penerimaan): Berapa banyak event per detik yang dapat ditangani oleh endpoint `POST /publish`.
-        - Keputusan Desain: Menggunakan FastAPI (async) dan memindahkan pemrosesan ke background task (via `asyncio.Queue`) memaksimalkan throughput penerimaan.
-    2. Processing Latency (Latensi Pemrosesan): Waktu rata-rata dari event diterima (`/publish`) hingga diproses oleh consumer dan disimpan di SQLite.
-        - Keputusan Desain: Ini adalah trade-off dari throughput. Jika publisher mengirim 5.000 event dalam 1 detik, latensi ini akan meningkat.
-    3. Duplicate Drop Rate (Tingkat Duplikasi): Persentase event yang diterima yang ditandai sebagai duplikat (`duplicate_dropped / received_total`).
-        - Keputusan Desain: Ini adalah metrik correctness. Menggunakan database (SQLite) untuk deduplication memastikan kebenaran data, yang diverifikasi dalam stress test `docker-compose`.
+1. Throughput (Penerimaan): Berapa banyak event per detik yang dapat ditangani oleh endpoint `POST /publish`.
+    - Keputusan Desain: Menggunakan FastAPI (async) dan memindahkan pemrosesan ke background task (via `asyncio.Queue`) memaksimalkan throughput penerimaan.
+2. Processing Latency (Latensi Pemrosesan): Waktu rata-rata dari event diterima (`/publish`) hingga diproses oleh consumer dan disimpan di SQLite.
+    - Keputusan Desain: Ini adalah trade-off dari throughput. Jika publisher mengirim 5.000 event dalam 1 detik, latensi ini akan meningkat.
+3. Duplicate Drop Rate (Tingkat Duplikasi): Persentase event yang diterima yang ditandai sebagai duplikat (`duplicate_dropped / received_total`).
+    - Keputusan Desain: Ini adalah metrik correctness. Menggunakan database (SQLite) untuk deduplication memastikan kebenaran data, yang diverifikasi dalam stress test `docker-compose`.
 
 
 ---
