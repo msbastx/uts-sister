@@ -5,7 +5,7 @@
 Proyek ini adalah implementasi log aggregator sederhana dengan arsitektur Pub-Sub, idempotent consumer, dan deduplikasi, yang berjalan di dalam Docker.
 
 **Link Video Demo YouTube (5-8 Menit):**
-[CANTUMKAN LINK YOUTUBE PUBLIK ANDA DI SINI]
+(https://youtu.be/rgoB9aypNFY)
 
 ---
 
