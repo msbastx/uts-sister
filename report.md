@@ -122,4 +122,4 @@ Metrik evaluasi kunci untuk sistem aggregator ini adalah:
 3. Duplicate Drop Rate (Tingkat Duplikasi): Persentase event yang diterima yang ditandai sebagai duplikat (`duplicate_dropped / received_total`).
     - Keputusan Desain: Ini adalah metrik correctness. Menggunakan database (SQLite) untuk deduplication memastikan kebenaran data, yang diverifikasi dalam stress test `docker-compose`.
 
-# Sitasi Buku Utama (APA Edisi ke-7, Bahasa Indonesia): Tanenbaum, A. S., & Van Steen, M. (2023). Distributed systems (Edisi ke-4, Versi 4.01). Maarten van Steen.
+# Sitasi Buku Utama: Tanenbaum, A. S., & Van Steen, M. (2023). Distributed systems (Edisi ke-4, Versi 4.01). Maarten van Steen.
